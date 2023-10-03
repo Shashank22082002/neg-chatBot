@@ -1,0 +1,6 @@
+# Exclude specific files and directories
+.wwebjs_auth
+.wwebjs_cache
+node_modules/
+eventListeners.js
+dbFunctions.js
