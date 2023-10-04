@@ -47,6 +47,7 @@ const startBooking = () => {
 }
 
 
+
 const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTIATION_STATES.NOPE) => {
     switch (clientState) {
         case CLIENT_STATES.ARRIVED: {
@@ -152,10 +153,12 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
     }
 }
 
+const author = "919829091373@c.us";
+
 client.on('message', async msg => {
     const chat = await msg.getChat();
     console.log('MESSAGE RECEIVED', msg);
-    if (chat.isGroup && msg.author === "919829091373@c.us") {
+    if (chat.isGroup && msg.author === author) {
         const phNum = utils.extractPhNum(msg.author);
         let clientState = CLIENT_STATES.ARRIVED, negotiatingState = NEGOTIATION_STATES.NOPE;
         try {
