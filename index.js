@@ -33,8 +33,9 @@ client.on('auth_failure', msg => {
     console.error('AUTHENTICATION FAILURE', msg);
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log('READY');
+    
 });
 
 const sendMenu = () => {
@@ -42,41 +43,50 @@ const sendMenu = () => {
     return menu;
 }
 
+const AboutUs = () => {
+    return "We are a group of students who are trying to build a chatbot for restaurants.\n\nYou can contact us at 918114209694\n\n\nYou can also visit our website at https://www.google.com\n";
+}
+
 const startBooking = () => {
     return "Starting booking..."
 }
 
+const checkIfDiscountPossible = async (phNum) => {
+    // based on customisable rules at backend web portal check if discount is possible
+}
 
+
+// write a function to message a client
+const messageClient = async (phNum, msg) => {
+    const chatId = phNum + '@c.us';
+    client.sendMessage(chatId, msg);
+}
 
 const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTIATION_STATES.NOPE) => {
     switch (clientState) {
         case CLIENT_STATES.ARRIVED: {
-            // console.log(msg, phNum, clientState);
             await db.updateClientState(phNum, CLIENT_STATES.OPTIONS_GIVEN);
-            // console.log('Client state updated to OPTIONS_GIVEN');
             return MESSAGES.HELLO;
         }
         case CLIENT_STATES.OPTIONS_GIVEN: {
+            // ADD LOGIC TO GIVE OPTIONS AGAIN IF USER IS INACTIVE FOR SOME PERIOD OF TIME
             switch (msg) {
                 case '1':
-                    return sendMenu();
+                    return AboutUs();
                 case '2': {
                     // change client state to STARTED_BOOKING
-                    await db.updateClientState(phNum, CLIENT_STATES.STARTED_BOOKING);
-                    return startBooking();
+                    return sendMenu();
                 }
                 case '3': {
-                    // change client state to NEGOTIATING
-                    await db.updateClientState(phNum, CLIENT_STATES.NEGOTIATING);
-                    await db.updateLogState(phNum, NEGOTIATION_STATES.START);
-                    // console.log('Negotiating state updated to START');
-                    return MESSAGES.ASK_TIME;
+                    return "Offers!! 🚀🚀\n"
                 }
                 case '4': {
-                    return MESSAGES.CONTACT_US;
+                    return "IN PROGRESS\n";
                 }
                 case '5': {
-                    return "IN PROGRESS\n";
+                    await db.updateClientState(phNum, CLIENT_STATES.NEGOTIATING);
+                    await db.updateLogState(phNum, NEGOTIATION_STATES.START);
+                    return MESSAGES.ASK_TIME;
                 }
                 default: {
                     return MESSAGES.INVALID_OPTION;
@@ -88,7 +98,6 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
             switch (negotiatingState) {
                 case NEGOTIATION_STATES.START: {
                     const slotNumber = utils.extractSlotInfo(msg);
-                    // console.log('Slot number GOTT', slotNumber);
                     if (slotNumber !== null) {
                         await db.storeTimeSlot(phNum, slotNumber);
                         return MESSAGES.ASK_PEOPLE;
@@ -98,54 +107,58 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
                 }
                 case NEGOTIATION_STATES.SLOT_KNOWN: {
                     const peopleRange = utils.extractPeopleRange(msg);
-                    
                     if (peopleRange !== null) {
                         await db.storePeopleRange(phNum, peopleRange);
-                        const offers = await db.getOffers(phNum);
-                        console.log("Here got offers ", offers);
-                        if (offers.length > 0) {
-                            await db.updateLogState(phNum, NEGOTIATION_STATES.OFFER1_GIVEN);
-                            console.log("Negotiating state updated to OFFER1_GIVEN");
-                            return MESSAGES.GIVE_OFFER + offers[0].Offer1 + MESSAGES.CONFIRM_OFFER;
-                        } else {
-                            return MESSAGES.GIVE_OFFER + MESSAGES.DEFAULT_OFFER + MESSAGES.CONFIRM_OFFER;
-                        }
+                        return MESSAGES.ASK_DISCOUNT;
                     } else {
                         return MESSAGES.FAILED_PARSING_PEOPLE;
                     }
                 }
                 case NEGOTIATION_STATES.SIZE_OF_BOOKING_KNOWN: {
-                    const offer = await db.getOffers(phNum);
-                    
-                    if (offer.length > 0) {
-                        await db.updateLogState(phNum, NEGOTIATION_STATES.OFFER1_GIVEN);
-                        return MESSAGES.GIVE_OFFER + offer[0].Offer + MESSAGES.CONFIRM_OFFER;
+                    const discountPer = utils.extractDiscountPercentage(msg);
+                    if (discountPer !== null) {
+                        await db.storeDiscount(phNum, discountPer);
                     } else {
-                        return MESSAGES.GIVE_OFFER + MESSAGES.DEFAULT_OFFER + MESSAGES.CONFIRM_OFFER;
+                        return MESSAGES.FAILED_PARSING_DISCOUNT;
                     }
                 }
-                case NEGOTIATION_STATES.OFFER1_GIVEN: {
-                    switch (msg) {
-                        case '1': {
-                            await db.updateLogState(phNum, NEGOTIATION_STATES.ACCEPTED);
-                            await db.updateClientState(phNum, CLIENT_STATES.ARRIVED);
-                            return MESSAGES.OFFER_ACCEPTED;
-                        }
-                        case '2': {
-                            await db.updateLogState(phNum, NEGOTIATION_STATES.NOPE);
-                            await db.updateClientState(phNum, CLIENT_STATES.ARRIVED);
-                            return MESSAGES.BYE;
-                        }
-                        default: {
-                            return MESSAGES.INVALID_OPTION;
+                case NEGOTIATION_STATES.DISCOUNT_KNOWN: {
+                    const details = await db.getNegLogDetails(phNum);
+                    const discountPer = details[0].DiscountVal;
+                    const peopleRange = details[0].PeopleRange;
+                    const slotNumber = details[0].SlotNumber;
+                    // find day today -- (1 -- 7)
+                    const day = new Date().getDay();
+                    if (day === 0)
+                        day = 7;
+                    console.log('Day ', day, ' Slot ', slotNumber, ' People ', peopleRange);
+                    const dis = await db.getMaxPermissibleDiscount(day, slotNumber, peopleRange);
+                    if (dis !== null) {
+                        const discount = dis[0].Discount;
+                        if (discount >= discountPer) {
+                            await db.updateLogState(phNum, NEGOTIATION_STATES.DISCOUNT_APPLIED);
+                            return MESSAGES.DISCOUNT_APPLIED;
                         }
                     }
+                    // store the conversation summary for the admin
+                    await db.updateLogState(phNum, NEGOTIATION_STATES.FORWARDED_TO_ADMIN);
+                    await db.storeConversation(phNum, 1, utils.generateSummary(phNum, slotNumber, peopleRange, discountPer));
+                    return MESSAGES.FORWARDED_TO_ADMIN;
                 }
-                case NEGOTIATION_STATES.ACCEPTED: {
-                    await db.updateClientState(phNum, CLIENT_STATES.ARRIVED);
-                    return MESSAGES.OFFER_ALREADY_APPLIED;
+                case NEGOTIATION_STATES.DISCOUNT_APPLIED: {
+                    
+                }
+                case NEGOTIATION_STATES.WAITING_FOR_REPLY: {
+                    await db.updateLogState(phNum, NEGOTIATION_STATES.FORWARDED_TO_ADMIN);
+                    await db.storeConversation(phNum, 1, msg);
+                }
+                
+                case NEGOTIATION_STATES.FORWARDED_TO_ADMIN: {
+                    // store the message in the database
+                    await db.storeConversation(phNum, 1, msg);
                 }
             }
+            return null;
         }
         case CLIENT_STATES.STARTED_BOOKING: {
             return MESSAGES.BOOKING_MESSAGE;
@@ -153,13 +166,19 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
     }
 }
 
-const author = "919829091373@c.us";
+const clients = ["919829091373@c.us", "919876543210@c.us", "918700559622@c.us"];
 
 client.on('message', async msg => {
-    const chat = await msg.getChat();
     console.log('MESSAGE RECEIVED', msg);
-    if (chat.isGroup && msg.author === author) {
-        const phNum = utils.extractPhNum(msg.author);
+    if (clients.includes(msg.from)) {
+        const phNum = utils.extractPhNum(msg.from);
+        if (msg.body === "!clear") {
+            await db.clearNegLogDetails(phNum);
+            await db.clearClientDetails(phNum);
+            await db.clearConversationLog(phNum);
+            msg.reply("Cleared");
+            return;
+        }
         let clientState = CLIENT_STATES.ARRIVED, negotiatingState = NEGOTIATION_STATES.NOPE;
         try {
             const clientDetails = await db.getClientDetails(phNum);
@@ -180,7 +199,7 @@ client.on('message', async msg => {
             console.log('Body ', msg.body);
             const response = await processMessage(msg.body, phNum, clientState, negotiatingState);
             if (response)
-                msg.reply(response);
+                msg.reply(response); 
             else {
                 console.log('No response found.');
             }
@@ -188,4 +207,113 @@ client.on('message', async msg => {
             console.error('Error fetching client details:', error);
         }
     }
+});
+
+
+
+import express from 'express';
+const app = express();
+const port = 3000; // Define your desired port
+app.use(express.json());
+
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
+    next();
+});
+
+app.get('/forwarded-requests', (req, res) => {
+    // Forwarded requests from the bot will be sent to this endpoint
+    db.getForwardedRequests()
+        .then((data) => {
+            res.json(data);
+        })
+        .catch((error) => {
+            // Handle any errors that occur during the database query or promise chain
+            res.status(500).json({ error: 'An error occurred' });
+        });
+});
+
+app.get('/client-info', (req, res) => {
+    db.getClientInfo()
+        .then((data) => {
+            res.json(data);
+        })
+        .catch((error) => {
+            // Handle any errors that occur during the database query or promise chain
+            res.status(500).json({ error: 'An error occurred' });
+        });
+})
+
+app.get('/client-info/:phNum', (req, res) => {
+    const phNum = req.params.phNum;
+    db.getClientDetails(phNum).then((data) => {
+        res.json(data);
+    }).catch((error) => {
+        res.status(500).json({ error: 'An error occurred' });
+    })
+})
+
+app.get('/discount-rules', (req, res) => {
+    db.getDiscountRules()
+        .then((data) => {
+            res.json(data);
+        })
+        .catch((error) => {
+            // Handle any errors that occur during the database query or promise chain
+            res.status(500).json({ error: 'An error occurred' });
+        });
+})
+
+// write an api to load conversation for a specific client given his phone number
+app.get('/conversation/:phNum', (req, res) => {
+    const phNum = req.params.phNum;
+    db.getConversation(phNum)
+        .then((data) => {
+            res.json(data);
+        })
+        .catch((error) => {
+            // Handle any errors that occur during the database query or promise chain
+            res.status(500).json({ error: 'An error occurred' });
+        });
+})
+
+
+app.post('/reply/:phNum', async (req, res) => {
+    try {
+        const phNum = req.params.phNum;
+        const msg = req.body.message;
+        console.log("BODY ", msg)
+        const id = Math.random().toFixed(6) * 1000000 + Math.random().toFixed(6) * 1000000;
+        await db.storeConversation(phNum, 0, msg);
+        if (client) {
+            client.sendMessage(phNum + '@c.us', msg);
+            console.log("Message send to ", phNum);
+            res.json({ message: 'success', data: msg });
+        } else {
+            console.log("Client not initialized");
+            res.status(500).json({ error: 'Client not initialized' });
+        }
+    } catch (error) {
+        // Handle any errors that occur during the API execution
+        console.error('An error occurred:', error);
+        res.status(500).json({ error: 'An error occurred' });
+    }
+});
+
+app.post('/change-rules', async (req, res) => {
+    try {
+        const rules = req.body.rules;
+        const data = await db.updateDiscountRules(rules.day, rules.slot_number, rules.people_range, rules.discount_val);
+        res.json({ message: 'success', data: data });
+    } catch (error) {
+        // Handle any errors that occur during the API execution
+        console.error('An error occurred:', error);
+        res.status(500).json({ error: 'An error occurred' });
+    }
+})
+
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });

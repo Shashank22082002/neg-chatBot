@@ -49,9 +49,9 @@ const extractPeopleRange = (str) => {
 
         if (match[2]) {
             b = parseInt(match[2], 10);
-        }
+        }   
 
-        const slotBoundaries = [0, 4, 8];
+        const slotBoundaries = [0, 2, 4, 6];
         const highestNumber = Math.max(a, b);
         const slot = slotBoundaries.findIndex((boundary) => highestNumber <= boundary);
 
@@ -60,13 +60,33 @@ const extractPeopleRange = (str) => {
     return null;
 };
 
+const extractDiscountPercentage = (str) => {
+    // regular expression to match number and % symbol. % sign maynot be present. Any thing else apart from first found number shall be ignored
+    // not for decimals as of now
+    const pattern = /(\d+(?:\.\d+)?)(?:%|\b)/;
+    const match = str.match(pattern);
+    if (match) {
+        return parseInt(match[1], 10);
+    }
+    return null;
+}
+
+const generateSummary = (phNum, slotNumber, peopleRange, discountPer) => {
+    // generate a summary message saying phnum asking for slotNumber for peopleRange with discountPer
+    // return summary;
+    return `Summary: ${phNum} asking for ${slotNumber} slot, for ${peopleRange} peoples, with discount ${discountPer}`;
+}
+
 // Example usage:
-const slotNumber1 = extractPeopleRange("7-8");
-const slotNumber2 = extractPeopleRange("9");
-console.log("Slot Number 1:", slotNumber1); // Should return 2 (highest number is 6)
-console.log("Slot Number 2:", slotNumber2); // Should return 2 (number is 7)
+// const slotNumber1 = extractPeopleRange("7-8");
+// const slotNumber2 = extractPeopleRange("9");
+// console.log("Slot Number 1:", slotNumber1); // Should return 2 (highest number is 6)
+// console.log("Slot Number 2:", slotNumber2); // Should return 2 (number is 7)
 
-
-const slotNumber = extractSlotInfo("  11  :  40  Pm");
-console.log("Slot Number:", slotNumber);
-export default {extractPhNum, extractSlotInfo, extractPeopleRange};
+// const discountPer = extractDiscountPercentage("10%");
+// console.log("Discount Percentage:", discountPer);
+// const discountPer2 = extractDiscountPercentage("val17.132");
+// console.log("Discount Percentage:", discountPer2);
+// const slotNumber = extractSlotInfo("1pm");
+// console.log("Slot Number:", slotNumber);
+export default { extractPhNum, extractSlotInfo, extractPeopleRange, extractDiscountPercentage, generateSummary};
