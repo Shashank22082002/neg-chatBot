@@ -138,13 +138,38 @@ const getNegLogDetails = (phone_number) => {
 };
 
 
-const createNewBooking = (phone_number, no_of_people, special_occasion, AmountRecieved) => {
-    connection.query('INSERT INTO RestaurantDB.Bookings (BookingID, PhoneNumber, StartTime, NumberOfPeople, SpecialOccasion, Status, AmountRecieved, TotalCost) VALUES (?, ?, NOW(), ?, ?, "Initiated", ?, 0)', [generateUniqueId(), phone_number, no_of_people, special_occasion, AmountRecieved], (error, results) => {
-        if (error) throw error;
-        console.log('New booking created', results);
+const createNewBooking = (phone_number, slot_number, people_range, discount) => {
+    const booking_id = generateUniqueId({
+        length: 10,
+        useLetters: false
     });
-    // write query to reserve table in database
+    return new Promise((resolve, reject) => {
+        connection.query(`INSERT INTO RestaurantDB.Bookings (BookingID, PhoneNumber, SlotNumber, PeopleRange, Discount, TimeOfBooking) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP())`, [booking_id, phone_number, slot_number, people_range, discount], (error, results) => {
+            if (error) {
+                console.error('Error creating new booking:', error);
+                reject(error);
+            } else {
+                console.log('New booking created', results);
+                resolve(results);
+            }
+        }
+        )
+    });
 }
+
+const getBookings = () => {
+    return new Promise((resolve, reject) => {
+        connection.query('SELECT * FROM RestaurantDB.Bookings', (error, results) => {
+            if (error) {
+                console.error('Error retrieving bookings:', error);
+                reject(error);
+            } else {
+                console.log('Bookings retrieved', results);
+                resolve(results);
+            }
+        });
+    });
+};
 
 const getClientDetails = (phone_number) => {
     return new Promise((resolve, reject) => {
@@ -354,100 +379,18 @@ const getConversation = (phone_number) => {
     });
 }
 
-const getPendingReplies = () => {
+const clearBookingDetails = (phone_number) => {
     return new Promise((resolve, reject) => {
-        connection.query('SELECT * FROM RestaurantDB.ReplyQueue', (error, results) => {
+        connection.query('DELETE FROM RestaurantDB.Bookings WHERE PhoneNumber = ?', [phone_number], (error, results) => {
             if (error) {
-                console.error('Error retrieving pending replies:', error);
+                console.error('Error clearing booking details:', error);
                 reject(error);
             } else {
-                console.log('Pending replies retrieved', results);
+                console.log('Booking details cleared', results);
                 resolve(results);
             }
-        })
+        });
     });
-}
-
-const addToReplyQueue = (replyID, phoneNumber, message) => {
-    return new Promise((resolve, reject) => {
-        connection.query('INSERT INTO RestaurantDB.ReplyQueue (ReplyID, PhoneNumber, Message) VALUES (?, ?, ?)', [replyID, phoneNumber, message], (error, results) => {
-            if (error) {
-                console.error('Error adding to reply queue:', error);
-                reject(error);
-            } else {
-                console.log('Added to reply queue', results);
-                resolve(results);
-            }
-        })
-    });
-}
-
-const removeFromReplyQueue = (replyID) => {
-    return new Promise((resolve, reject) => {
-        connection.query('DELETE FROM RestaurantDB.ReplyQueue WHERE ReplyID = ?', [replyID], (error, results) => {
-            if (error) {
-                console.error('Error removing from reply queue:', error);
-                reject(error);
-            } else {
-                console.log('Removed from reply queue', results);
-                resolve(results);
-            }
-        })
-    });
-}
-
-// --------------------------------------AFTER BOOKING FUNCTIONS----------------------------------------- //
-
-const getItemPrice = (item_id) => {
-    connection.query('SELECT Price FROM RestaurantDB.Menu WHERE ItemID = ?', [item_id], (error, results) => {
-        if (error) throw error;
-        console.log('Item price retrieved', results);
-        return results;
-    });
-}
-
-const createNewOrder = (booking_id, item_id, quantity) => {
-    /**
-     * `OrderID` varchar(15) PRIMARY KEY,
-  `BookingID` varchar(15),
-  `ItemID` varchar(15),
-  `Quantity` integer,
-  `Cost` double
-     */
-    // const price = await getItemPrice(item_id);
-    // calculate cost from price
-    const cost = getItemPrice(item_id) * quantity;
-    connection.query('INSERT INTO orders (BookingID, ItemID, Quantity, Cost) VALUES (?, ?, ?, ?)', [booking_id, item_id, quantity, cost], (error, results) => {
-        if (error) throw error;
-        console.log('New order created', results);
-    });
-}
-
-const calculateBill = (booking_id) => {
-    // calculate bill from orders
-    connection.query('SELECT SUM(Cost) FROM orders WHERE BookingID = ?', [booking_id], (error, results) => {
-        if (error) throw error;
-        console.log('Bill calculated', results);
-        return results;
-    });
-}
-
-const updateBooking = (booking_id) => {
-    // update completion time, total cost
-    connection.query('UPDATE bookings SET CompletionTime = NOW(), TotalCost = ? WHERE BookingID = ?', [calculateBill(booking_id), booking_id], (error, results) => {
-        if (error) throw error;
-        console.log('Booking updated', results);
-    });
-    // free tables which were reserved
-}
-
-const cancelBooking = (booking_id) => {
-    // update status
-    connection.query('UPDATE bookings SET Status = "Cancelled" WHERE BookingID = ?', [booking_id], (error, results) => {
-        if (error) throw error;
-        console.log('Booking cancelled', results);
-    });
-    // also free tables if reserved any
 }
 
 const closeConnection = () => {
@@ -459,10 +402,9 @@ const closeConnection = () => {
 
 export default {
     connection, startConnection, addClient, updateClientState, createNewBooking,
-    createNewOrder, updateBooking, cancelBooking, closeConnection, getClientDetails,
-    addNegLog, storeTimeSlot, storePeopleRange, storeDiscount, getMaxPermissibleDiscount,
+    getBookings ,closeConnection, getClientDetails, addNegLog, storeTimeSlot,
+    storePeopleRange, storeDiscount, getMaxPermissibleDiscount,
     getNegLogDetails, updateLogState, clearClientDetails, clearNegLogDetails,
     getForwardedRequests, getClientInfo, getDiscountRules, updateDiscountRules,
-    storeConversation, getConversation, clearConversationLog,
-    addToReplyQueue, getPendingReplies, removeFromReplyQueue
+    storeConversation, getConversation, clearConversationLog, clearBookingDetails
 }

@@ -1,9 +1,9 @@
 import pkg from 'whatsapp-web.js'
-const { Client, LocalAuth, Buttons, List, MessageMedia } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 import db from './dbconnect.js';
 import states from './states.js';
 import utils from './utilFunctions.js';
-const { BOOKING_STATES, NEGOTIATION_STATES, CLIENT_STATES} = states;
+const { NEGOTIATION_STATES, CLIENT_STATES} = states;
 import { MESSAGES } from './messages.js';
 
 const client = new Client({
@@ -45,14 +45,6 @@ const sendMenu = () => {
 
 const AboutUs = () => {
     return "We are a group of students who are trying to build a chatbot for restaurants.\n\nYou can contact us at 918114209694\n\n\nYou can also visit our website at https://www.google.com\n";
-}
-
-const startBooking = () => {
-    return "Starting booking..."
-}
-
-const checkIfDiscountPossible = async (phNum) => {
-    // based on customisable rules at backend web portal check if discount is possible
 }
 
 
@@ -137,6 +129,8 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
                         const discount = dis[0].Discount;
                         if (discount >= discountPer) {
                             await db.updateLogState(phNum, NEGOTIATION_STATES.DISCOUNT_APPLIED);
+                            await db.storeConversation(phNum, 1, utils.generateSummary(phNum, slotNumber, peopleRange, discountPer));
+                            await db.createNewBooking(phNum, slotNumber, peopleRange, discountPer);
                             return MESSAGES.DISCOUNT_APPLIED;
                         }
                     }
@@ -166,16 +160,18 @@ const processMessage = async (msg, phNum, clientState, negotiatingState = NEGOTI
     }
 }
 
-const clients = ["919829091373@c.us", "919876543210@c.us", "918700559622@c.us"];
+const clients = ["919829091373@c.us", "919876543210@c.us", "918700559622@c.us", "919739049663@c.us",
+"918112291400@c.us"];
 
 client.on('message', async msg => {
     console.log('MESSAGE RECEIVED', msg);
     if (clients.includes(msg.from)) {
         const phNum = utils.extractPhNum(msg.from);
         if (msg.body === "!clear") {
+            await db.clearConversationLog(phNum);
+            await db.clearBookingDetails(phNum);
             await db.clearNegLogDetails(phNum);
             await db.clearClientDetails(phNum);
-            await db.clearConversationLog(phNum);
             msg.reply("Cleared");
             return;
         }
@@ -279,13 +275,22 @@ app.get('/conversation/:phNum', (req, res) => {
         });
 })
 
+app.get('/bookings', (req, res) => {
+    db.getBookings()
+        .then((data) => {
+            res.json(data);
+        })
+        .catch((error) => {
+            res.status(500).json({ error: 'An error occurred' });
+        });
+})
+
 
 app.post('/reply/:phNum', async (req, res) => {
     try {
         const phNum = req.params.phNum;
         const msg = req.body.message;
         console.log("BODY ", msg)
-        const id = Math.random().toFixed(6) * 1000000 + Math.random().toFixed(6) * 1000000;
         await db.storeConversation(phNum, 0, msg);
         if (client) {
             client.sendMessage(phNum + '@c.us', msg);
@@ -301,6 +306,22 @@ app.post('/reply/:phNum', async (req, res) => {
         res.status(500).json({ error: 'An error occurred' });
     }
 });
+
+app.post('/new-booking', async (req, res) => {
+    try {
+        const booking = req.body;
+        console.log(booking);
+        const data = await db.createNewBooking(booking.PhoneNumber, booking.SlotNumber, booking.PeopleRange, booking.Discount);
+        await db.updateClientState(req.body.PhoneNumber, CLIENT_STATES.STARTED_BOOKING);
+        console.log("Updating state !!!", req.body.PhoneNumber);
+        await db.updateLogState(req.body.PhoneNumber, NEGOTIATION_STATES.DISCOUNT_APPLIED);
+        res.json({ message: 'success', data: data });
+    } catch (error) {
+        // Handle any errors that occur during the API execution
+        console.error('An error occurred:', error);
+        res.status(500).json({ error: 'An error occurred' });
+    }
+})
 
 app.post('/change-rules', async (req, res) => {
     try {
