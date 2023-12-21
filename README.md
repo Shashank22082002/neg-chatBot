@@ -26,5 +26,5 @@ library is installed correctly.
 </ul>
 
 ### `2. Setting up the dashboard`
-This is very simple, just clone the repository and `npm start`. This will start the react
+This is very simple, just navigate to the admin-server folder and do `npm start`. This will start the react
 server in localhost 3001.
