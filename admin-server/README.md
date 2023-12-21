@@ -1,13 +1,13 @@
 # TODO
 
-### `Clients Table`
+### ~`Clients Table`~
 
-### `Offer Table`
+### ~`Offer Table`~
 
-### `Pending Negotiation Requests`
+### ~`Pending Negotiation Requests`~
 
-###  `Previous Conversation`
+###  ~`Previous Conversation`~
 
-### `Send Message`
+### ~`Send Message`~
 
 ## `Completed ..`
